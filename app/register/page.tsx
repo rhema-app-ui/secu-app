@@ -34,7 +34,7 @@ export default function RegisterPage() {
       // 2. Ajouter l'agent dans votre table `agents`
       const { error: dbError } = await supabase.from("agents").insert([
         {
-          "e-mail": email,
+          email: email,
           nom,
           role: "agent",
           statut: "actif",
