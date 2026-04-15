@@ -2,6 +2,7 @@
 import { useState } from "react";
 import { supabase } from "../../lib/supabase";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
@@ -15,10 +16,14 @@ export default function LoginPage() {
     setLoading(true);
     setError("");
 
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    // 🔐 Connexion avec Supabase Auth
+    const { error: authError } = await supabase.auth.signInWithPassword({ 
+      email, 
+      password 
+    });
 
-    if (error) {
-      setError(error.message);
+    if (authError) {
+      setError(authError.message);
       setLoading(false);
     } else {
       router.push("/dashboard");
@@ -65,8 +70,15 @@ export default function LoginPage() {
           </button>
         </form>
 
-        <p className="mt-4 text-xs text-gray-400 text-center">
-          Pas de compte ? Créez-en un depuis le dashboard Supabase pour les tests.
+        {/* 🔗 Lien d'inscription avec Next.js Link (navigation fluide) */}
+        <p className="text-center mt-4 text-sm text-gray-400">
+          Pas de compte ?{" "}
+          <Link 
+            href="/register" 
+            className="text-blue-500 hover:text-blue-400 font-medium transition"
+          >
+            Créer un compte agent
+          </Link>
         </p>
       </div>
     </main>

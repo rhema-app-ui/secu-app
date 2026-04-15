@@ -1,15 +1,15 @@
 "use client";
+
 import { useEffect, useState } from "react";
 import { supabase } from "../../lib/supabase";
 import { addToQueue, runSync } from "../../lib/db";
 
 export default function PointagePage() {
   const [isOnline, setIsOnline] = useState(true);
-  const [gpsStatus, setGpsStatus] = useState<"idle" | "acquiring" | "ready" | "error">("idle");
+  const [gpsStatus, setGpsStatus] = useState("idle");
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
 
-  // 📡 Surveillance de la connexion réseau
   useEffect(() => {
     setIsOnline(navigator.onLine);
     
@@ -18,9 +18,12 @@ export default function PointagePage() {
       setIsOnline(status);
       if (status) {
         setMessage("🌐 Connexion rétablie ! Synchronisation...");
-        runSync().then((count) => {
-          if (count && count > 0) setMessage(`✅ ${count} action(s) synchronisée(s) !`);
-          else setMessage("✅ En ligne. Aucune donnée en attente.");
+        runSync().then((result: any) => {
+          if (result && result.synced > 0) {
+            setMessage(`✅ ${result.synced} action(s) synchronisée(s) !`);
+          } else {
+            setMessage("✅ En ligne. Aucune donnée en attente.");
+          }
           setTimeout(() => setMessage(""), 3000);
         });
       } else {
@@ -36,7 +39,7 @@ export default function PointagePage() {
     };
   }, []);
 
-  const handlePointage = async (type: "checkin" | "checkout") => {
+  const handlePointage = async (type: string) => {
     if (!navigator.geolocation) {
       setGpsStatus("error");
       setMessage("❌ GPS non supporté sur cet appareil");
@@ -48,11 +51,11 @@ export default function PointagePage() {
     setMessage("📍 Acquisition du signal GPS...");
 
     navigator.geolocation.getCurrentPosition(
-      async (pos) => {
+      async (pos: any) => {
         setGpsStatus("ready");
         
-        // ✅ Syntaxe correcte pour Supabase v2
-        const { data: { session } } = await supabase.auth.getSession();
+        const { data } = await supabase.auth.getSession();
+        const session = data?.session;
         const email = session?.user?.email || "agent-test@secu.fr";
 
         const payload = {
@@ -64,18 +67,15 @@ export default function PointagePage() {
           timestamp: new Date().toISOString(),
         };
 
-        // 🚀 Logique Offline / Online
         if (navigator.onLine) {
           const { error } = await supabase.from("pointages").insert(payload);
           if (error) {
-            // Si l'envoi direct échoue, on bascule en file d'attente locale
             await addToQueue("pointage", payload);
             setMessage("⚠️ Échec serveur. Mis en file d'attente locale.");
           } else {
             setMessage(`✅ ${type === "checkin" ? "Prise de service" : "Fin de service"} enregistrée.`);
           }
         } else {
-          // Mode Hors Ligne : sauvegarde locale uniquement
           await addToQueue("pointage", payload);
           setMessage(`💾 Mode hors ligne : ${type === "checkin" ? "Début" : "Fin"} sauvegardé.`);
         }
@@ -93,7 +93,6 @@ export default function PointagePage() {
 
   return (
     <main className="min-h-screen bg-gray-950 text-white p-4 flex flex-col">
-      {/* Header */}
       <header className="flex items-center justify-between mb-8">
         <button onClick={() => window.history.back()} className="p-2 -ml-2 text-gray-400 hover:text-white">← Retour</button>
         <div className={`px-3 py-1 rounded-full text-xs font-bold border ${
@@ -103,13 +102,11 @@ export default function PointagePage() {
         </div>
       </header>
 
-      {/* Titre */}
       <section className="text-center mb-10">
         <h1 className="text-3xl font-bold mb-2">Pointage Terrain</h1>
         <p className="text-gray-400">Validez votre présence</p>
       </section>
 
-      {/* GPS Status */}
       <div className={`text-center mb-8 text-sm font-medium ${
         gpsStatus === "acquiring" ? "text-yellow-400 animate-pulse" : 
         gpsStatus === "ready" ? "text-green-400" : "text-gray-500"
@@ -120,7 +117,6 @@ export default function PointagePage() {
         {gpsStatus === "error" && "❌ Signal GPS perdu"}
       </div>
 
-      {/* Boutons */}
       <div className="flex-1 flex flex-col justify-center gap-5">
         <button 
           onClick={() => handlePointage("checkin")}
@@ -139,7 +135,6 @@ export default function PointagePage() {
         </button>
       </div>
 
-      {/* Message de feedback */}
       {message && (
         <div className="mt-8 p-4 bg-gray-900 border border-gray-800 rounded-xl text-center">
           <p className="text-sm text-gray-200">{message}</p>
@@ -151,4 +146,4 @@ export default function PointagePage() {
       </footer>
     </main>
   );
-}
+} // ✅ Cette accolade ferme la fonction PointagePage
