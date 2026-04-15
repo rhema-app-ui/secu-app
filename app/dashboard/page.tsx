@@ -39,7 +39,7 @@ export default function DashboardPage() {
       const { data: profile } = await supabase
         .from("agents")
         .select("role, statut, site_affecte, nom, subscription_status")
-        .eq("e-mail", session.user.email) // ⚠️ Attention : colonne "e-mail" avec tiret
+        .eq("email", session.user.email) // ⚠️ Attention : colonne "email" avec tiret
         .single();
 
       setAgentProfile({
