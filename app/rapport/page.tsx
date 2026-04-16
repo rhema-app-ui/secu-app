@@ -10,46 +10,62 @@ export default function RapportPage() {
   const [isPro, setIsPro] = useState(false)
   const [pointages, setPointages] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
+  const [debug, setDebug] = useState("")
   const router = useRouter()
 
   useEffect(() => {
     const init = async () => {
-      const response = await supabase.auth.getSession()
-      const session = response.data?.session
-      
-      if (!session) {
-        router.push("/login")
-        return
-      }
+      try {
+        setDebug("1. Récupération session...")
+        const response = await supabase.auth.getSession()
+        const session = response.data?.session
+        
+        if (!session) {
+          setDebug("❌ Pas de session → redirect login")
+          router.push("/login")
+          return
+        }
+        setDebug("2. Session OK, email: " + session.user.email)
 
-      const profileResponse = await supabase
-        .from("agents")
-        .select("subscription_status")
-        .eq("email", session.user.email)
-        .single()
-      
-      const status = profileResponse.data?.subscription_status
-      
-      if (status !== "active" && status !== "trial") {
-        router.push("/dashboard")
-        return
-      }
-      
-      setIsPro(true)
+        setDebug("3. Vérification abonnement...")
+        const profileResponse = await supabase
+          .from("agents")
+          .select("subscription_status")
+          .eq("email", session.user.email)
+          .single()
+        
+        const status = profileResponse.data?.subscription_status
+        setDebug("4. Statut: " + status)
+        
+        if (status !== "active" && status !== "trial") {
+          setDebug("❌ Accès refusé → redirect dashboard")
+          router.push("/dashboard")
+          return
+        }
+        
+        setIsPro(true)
+        setDebug("5. Chargement des pointages...")
 
-      const listResponse = await supabase
-        .from("pointages")
-        .select("*")
-        .order("timestamp", { ascending: false })
-        .limit(50)
-      
-      setPointages(listResponse.data || [])
-      setLoading(false)
+        const listResponse = await supabase
+          .from("pointages")
+          .select("*")
+          .order("timestamp", { ascending: false })
+          .limit(50)
+        
+        setDebug("6. Réponse: " + (listResponse.data?.length || 0) + " pointages")
+        setPointages(listResponse.data || [])
+      } catch (err: any) {
+        setDebug("❌ Erreur: " + err.message)
+        console.error("Rapport error:", err)
+      } finally {
+        setLoading(false)
+      }
     }
     init()
   }, [router])
 
   const exportPDF = () => {
+    setDebug("📄 Génération PDF...")
     const doc = new jsPDF()
     doc.setFontSize(18)
     doc.text("Secu-App - Rapport", 14, 22)
@@ -73,46 +89,69 @@ export default function RapportPage() {
     })
 
     doc.save("rapport_" + Date.now() + ".pdf")
+    setDebug("✅ PDF exporté !")
   }
 
+  // Affichage debug pendant chargement
   if (loading) {
     return (
-      <main className="min-h-screen bg-gray-950 text-white flex items-center justify-center">
-        <p>Chargement...</p>
+      <main className="min-h-screen bg-gray-950 text-white p-4">
+        <button onClick={() => router.back()} className="mb-4 text-gray-400">← Retour</button>
+        <div className="bg-gray-900 p-4 rounded border border-gray-800">
+          <p className="text-yellow-400">⏳ Chargement...</p>
+          <p className="text-xs text-gray-500 mt-2">{debug}</p>
+        </div>
       </main>
     )
   }
 
+  // Accès refusé avec debug
   if (!isPro) {
     return (
-      <main className="min-h-screen bg-gray-950 text-white p-4 flex items-center justify-center">
-        <div className="text-center">
+      <main className="min-h-screen bg-gray-950 text-white p-4">
+        <button onClick={() => router.back()} className="mb-4 text-gray-400">← Retour</button>
+        <div className="bg-gray-900 p-6 rounded border border-gray-800 text-center">
           <p className="text-4xl mb-4">🔒</p>
-          <p className="text-gray-400 mb-4">Acces Pro requis</p>
+          <p className="text-gray-400 mb-2">Acces Pro requis</p>
+          <p className="text-xs text-gray-600 mb-4">{debug}</p>
           <button onClick={() => router.push("/dashboard")} className="bg-purple-600 px-4 py-2 rounded">
-            Retour
+            Retour au dashboard
           </button>
         </div>
       </main>
     )
   }
 
+  // Page principale avec debug + bouton toujours visible
   return (
     <main className="min-h-screen bg-gray-950 text-white p-4">
-      <button onClick={() => router.back()} className="mb-4 text-gray-400">
-        ← Retour
-      </button>
+      <button onClick={() => router.back()} className="mb-4 text-gray-400">← Retour</button>
+
+      {/* Debug panel (à supprimer en prod) */}
+      <div className="bg-gray-900 p-3 rounded mb-4 text-xs text-gray-500">
+        Debug: {debug} • Pointages: {pointages.length}
+      </div>
 
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-2xl font-bold">📊 Rapports</h1>
-        <button onClick={exportPDF} disabled={pointages.length === 0} className="bg-purple-600 px-4 py-2 rounded disabled:opacity-50">
+        {/* ✅ Bouton TOUJOURS visible pour le test */}
+        <button 
+          onClick={exportPDF} 
+          className="bg-purple-600 hover:bg-purple-700 px-4 py-2 rounded disabled:opacity-50"
+        >
           📄 Export PDF
         </button>
       </div>
 
+      {/* Tableau */}
       <div className="overflow-x-auto bg-gray-900 rounded border border-gray-800">
         {pointages.length === 0 ? (
-          <p className="p-6 text-center text-gray-500">Aucun pointage</p>
+          <div className="p-6 text-center">
+            <p className="text-gray-500 mb-2">📭 Aucun pointage trouvé</p>
+            <p className="text-xs text-gray-600">
+              Astuce: Va sur /pointage et crée un pointage test pour voir des données ici.
+            </p>
+          </div>
         ) : (
           <table className="w-full text-sm text-left">
             <thead className="bg-gray-800 text-gray-300">
