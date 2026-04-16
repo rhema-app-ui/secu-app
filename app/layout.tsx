@@ -1,15 +1,15 @@
-import type { Metadata } from "next"
-import "./globals.css"
+import type { Metadata } from "next";
+import "./globals.css";
 
 export const metadata: Metadata = {
   title: "Secu-App",
   description: "Gestion d'agents de sécurité",
-}
+};
 
 export default function RootLayout({
   children,
 }: {
-  children: React.ReactNode
+  children: React.ReactNode;
 }) {
   return (
     <html lang="fr">
@@ -17,5 +17,5 @@ export default function RootLayout({
         {children}
       </body>
     </html>
-  )
+  );
 }
