@@ -11,6 +11,9 @@ export default function PointagePage() {
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
   
+  // 🔄 État du service : null = aucun, "checkin" = commencé, "checkout" = terminé
+  const [serviceState, setServiceState] = useState<"checkin" | "checkout" | null>(null);
+  
   // 📸 Gestion photo
   const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
@@ -60,7 +63,7 @@ export default function PointagePage() {
     setPhotoPreview(null);
   };
 
-  const handlePointage = async (type: string) => {
+  const handlePointage = async (type: "checkin" | "checkout") => {
     if (!navigator.geolocation) {
       setGpsStatus("error");
       setMessage("❌ GPS non supporté sur cet appareil");
@@ -87,7 +90,6 @@ export default function PointagePage() {
           
           try {
             if (navigator.onLine) {
-              // En ligne : upload vers Supabase Storage
               const fileName = `${email}/${Date.now()}-${photoFile.name}`;
               const {  publicUrl, error: uploadError } = await supabase.storage
                 .from("pointages-photos")
@@ -96,7 +98,6 @@ export default function PointagePage() {
               if (uploadError) throw uploadError;
               photoUrl = publicUrl || "";
             } else {
-              // Hors ligne : conversion Base64 pour stockage local
               photoUrl = await fileToBase64(photoFile);
             }
           } catch (err: any) {
@@ -114,7 +115,7 @@ export default function PointagePage() {
           lng: pos.coords.longitude,
           precision: pos.coords.accuracy,
           timestamp: new Date().toISOString(),
-          photo_url: photoUrl, // 🔗 URL ou Base64 selon le mode
+          photo_url: photoUrl,
           is_offline_photo: !navigator.onLine && photoFile !== null,
         };
 
@@ -125,10 +126,14 @@ export default function PointagePage() {
             await addToQueue("pointage", payload);
             setMessage("⚠️ Échec serveur. Mis en file d'attente locale.");
           } else {
+            // ✅ Mise à jour de l'état du service après succès
+            setServiceState(type);
             setMessage(`✅ ${type === "checkin" ? "Prise de service" : "Fin de service"} enregistrée${photoUrl ? " + photo" : ""}.`);
           }
         } else {
           await addToQueue("pointage", payload);
+          // ✅ Même en offline, on met à jour l'état local
+          setServiceState(type);
           setMessage(`💾 Mode hors ligne : ${type === "checkin" ? "Début" : "Fin"}${photoUrl ? " + photo" : ""} sauvegardé.`);
         }
         
@@ -144,6 +149,12 @@ export default function PointagePage() {
       },
       { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
     );
+  };
+
+  // 🔄 Réinitialiser le cycle (après une fin de service)
+  const handleReset = () => {
+    setServiceState(null);
+    setMessage("");
   };
 
   return (
@@ -169,7 +180,7 @@ export default function PointagePage() {
           type="file" 
           accept="image/*" 
           onChange={handlePhotoSelect}
-          disabled={loading || uploadingPhoto}
+          disabled={loading || uploadingPhoto || serviceState !== null}
           className="block w-full text-sm text-gray-400 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-blue-600 file:text-white hover:file:bg-blue-700 disabled:opacity-50"
         />
         {photoPreview && (
@@ -202,22 +213,61 @@ export default function PointagePage() {
         {gpsStatus === "error" && "❌ Signal GPS perdu"}
       </div>
 
-      {/* 🔘 Boutons d'action */}
+      {/* 🔄 Indicateur d'état du service */}
+      {serviceState && (
+        <div className={`text-center mb-4 p-3 rounded-lg border ${
+          serviceState === "checkin" 
+            ? "bg-emerald-600/20 border-emerald-500/30 text-emerald-400" 
+            : "bg-red-600/20 border-red-500/30 text-red-400"
+        }`}>
+          <p className="font-medium">
+            {serviceState === "checkin" 
+              ? "🟢 Service en cours — Cliquez sur FIN pour terminer" 
+              : "🔴 Service terminé"}
+          </p>
+          {serviceState === "checkout" && (
+            <button 
+              onClick={handleReset}
+              className="mt-2 text-xs underline hover:text-white transition"
+            >
+              🔄 Nouveau cycle
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* 🔘 Boutons d'action avec logique toggle */}
       <div className="flex-1 flex flex-col justify-center gap-5">
+        {/* 🟢 BOUTON DÉBUT */}
         <button 
           onClick={() => handlePointage("checkin")}
-          disabled={loading || gpsStatus === "acquiring" || uploadingPhoto}
-          className="w-full bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 disabled:cursor-not-allowed py-6 rounded-2xl font-bold text-xl shadow-lg shadow-emerald-900/40 active:scale-[0.98] transition-all"
+          disabled={loading || gpsStatus === "acquiring" || uploadingPhoto || serviceState === "checkin"}
+          className={`w-full py-6 rounded-2xl font-bold text-xl transition-all shadow-lg active:scale-[0.98] ${
+            serviceState === "checkin"
+              ? "bg-gray-700 cursor-not-allowed opacity-50 shadow-none"
+              : "bg-emerald-600 hover:bg-emerald-500 shadow-emerald-900/40"
+          }`}
         >
-          {loading ? "⏳ En cours..." : "🟢 DÉBUT DE SERVICE"}
+          {serviceState === "checkin" 
+            ? "✅ Service déjà commencé" 
+            : loading ? "⏳ En cours..." : "🟢 DÉBUT DE SERVICE"}
         </button>
         
+        {/* 🔴 BOUTON FIN */}
         <button 
           onClick={() => handlePointage("checkout")}
-          disabled={loading || gpsStatus === "acquiring" || uploadingPhoto}
-          className="w-full bg-red-600 hover:bg-red-500 disabled:opacity-50 disabled:cursor-not-allowed py-6 rounded-2xl font-bold text-xl shadow-lg shadow-red-900/40 active:scale-[0.98] transition-all"
+          disabled={loading || gpsStatus === "acquiring" || uploadingPhoto || serviceState !== "checkin"}
+          className={`w-full py-6 rounded-2xl font-bold text-xl transition-all shadow-lg active:scale-[0.98] ${
+            serviceState !== "checkin"
+              ? "bg-gray-700 cursor-not-allowed opacity-50 shadow-none"
+              : "bg-red-600 hover:bg-red-500 shadow-red-900/40"
+          }`}
         >
-          {loading ? "⏳ En cours..." : "🔴 FIN DE SERVICE"}
+          {serviceState === "checkout"
+            ? "🔴 Service terminé"
+            : serviceState !== "checkin"
+              ? "⏳ Commencez d'abord le service"
+              : loading ? "⏳ En cours..." : "🔴 FIN DE SERVICE"}
         </button>
       </div>
 
@@ -229,7 +279,7 @@ export default function PointagePage() {
       )}
       
       <footer className="text-center text-xs text-gray-600 mt-8">
-        Secu-App v0.3 • Sync: {isOnline ? "Auto" : "Manuelle"} • Photos: {isOnline ? "Storage" : "Base64"}
+        Secu-App v0.4 • Sync: {isOnline ? "Auto" : "Manuelle"} • Photos: {isOnline ? "Storage" : "Base64"}
       </footer>
     </main>
   );
