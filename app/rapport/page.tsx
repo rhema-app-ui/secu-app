@@ -4,154 +4,90 @@ import { useEffect, useState } from "react"
 import { supabase } from "../../lib/supabase"
 import { useRouter } from "next/navigation"
 import jsPDF from "jspdf"
-import autoTable from "jspdf-autotable"
+import "jspdf-autotable"
 
 export default function RapportPage() {
-  const [isPro, setIsPro] = useState(false)
   const [pointages, setPointages] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
-  const [debug, setDebug] = useState("")
   const router = useRouter()
 
   useEffect(() => {
-    const init = async () => {
+    const load = async () => {
       try {
-        setDebug("1. Récupération session...")
-        const response = await supabase.auth.getSession()
-        const session = response.data?.session
-        
-        if (!session) {
-          setDebug("❌ Pas de session → redirect login")
-          router.push("/login")
-          return
-        }
-        setDebug("2. Session OK, email: " + session.user.email)
+        const { data: { session } } = await supabase.auth.getSession()
+        if (!session) { router.push("/login"); return }
 
-        setDebug("3. Vérification abonnement...")
-        const profileResponse = await supabase
+        const { data: profile } = await supabase
           .from("agents")
           .select("subscription_status")
           .eq("email", session.user.email)
           .single()
-        
-        const status = profileResponse.data?.subscription_status
-        setDebug("4. Statut: " + status)
-        
-        if (status !== "active" && status !== "trial") {
-          setDebug("❌ Accès refusé → redirect dashboard")
+
+        if (profile?.subscription_status !== "active" && profile?.subscription_status !== "trial") {
           router.push("/dashboard")
           return
         }
-        
-        setIsPro(true)
-        setDebug("5. Chargement des pointages...")
 
-        const listResponse = await supabase
+        const { data } = await supabase
           .from("pointages")
           .select("*")
           .order("timestamp", { ascending: false })
           .limit(50)
-        
-        setDebug("6. Réponse: " + (listResponse.data?.length || 0) + " pointages")
-        setPointages(listResponse.data || [])
-      } catch (err: any) {
-        setDebug("❌ Erreur: " + err.message)
-        console.error("Rapport error:", err)
+
+        setPointages(data || [])
+      } catch (err) {
+        console.error("❌ Rapport load error:", err)
       } finally {
         setLoading(false)
       }
     }
-    init()
+    load()
   }, [router])
 
   const exportPDF = () => {
-    setDebug("📄 Génération PDF...")
     const doc = new jsPDF()
-    doc.setFontSize(18)
-    doc.text("Secu-App - Rapport", 14, 22)
-    doc.setFontSize(11)
-    doc.text("Date: " + new Date().toLocaleDateString("fr-FR"), 14, 30)
-
-    const rows = pointages.map((p: any) => [
-      new Date(p.timestamp).toLocaleString("fr-FR"),
-      p.email ? p.email.split("@")[0] : "Agent",
+    doc.setFontSize(16)
+    doc.text("Secu-App - Rapport d'activite", 14, 20)
+    
+    const tableData = pointages.map((p) => [
+      new Date(p.timestamp).toLocaleDateString("fr-FR"),
+      p.email?.split("@")[0] || "Agent",
       p.type === "checkin" ? "Debut" : "Fin",
-      p.lat ? p.lat.toFixed(4) : "",
-      p.lng ? p.lng.toFixed(4) : ""
+      p.lat ? p.lat.toFixed(4) : "-",
+      p.lng ? p.lng.toFixed(4) : "-"
     ])
 
-    autoTable(doc, {
-      startY: 40,
+    // jspdf-autotable étend jsPDF via import side-effect
+    // @ts-ignore: autoTable est injecté dynamiquement
+    doc.autoTable({
+      startY: 30,
       head: [["Date", "Agent", "Type", "Lat", "Lng"]],
-      body: rows,
+      body: tableData,
       theme: "grid",
-      styles: { fontSize: 8 }
+      styles: { fontSize: 9 }
     })
 
-    doc.save("rapport_" + Date.now() + ".pdf")
-    setDebug("✅ PDF exporté !")
+    doc.save(`rapport_secu_${new Date().toISOString().split("T")[0]}.pdf`)
   }
 
-  // Affichage debug pendant chargement
   if (loading) {
-    return (
-      <main className="min-h-screen bg-gray-950 text-white p-4">
-        <button onClick={() => router.back()} className="mb-4 text-gray-400">← Retour</button>
-        <div className="bg-gray-900 p-4 rounded border border-gray-800">
-          <p className="text-yellow-400">⏳ Chargement...</p>
-          <p className="text-xs text-gray-500 mt-2">{debug}</p>
-        </div>
-      </main>
-    )
+    return <div className="flex min-h-screen items-center justify-center bg-gray-950 text-white">⏳ Chargement...</div>
   }
 
-  // Accès refusé avec debug
-  if (!isPro) {
-    return (
-      <main className="min-h-screen bg-gray-950 text-white p-4">
-        <button onClick={() => router.back()} className="mb-4 text-gray-400">← Retour</button>
-        <div className="bg-gray-900 p-6 rounded border border-gray-800 text-center">
-          <p className="text-4xl mb-4">🔒</p>
-          <p className="text-gray-400 mb-2">Acces Pro requis</p>
-          <p className="text-xs text-gray-600 mb-4">{debug}</p>
-          <button onClick={() => router.push("/dashboard")} className="bg-purple-600 px-4 py-2 rounded">
-            Retour au dashboard
-          </button>
-        </div>
-      </main>
-    )
-  }
-
-  // Page principale avec debug + bouton toujours visible
   return (
     <main className="min-h-screen bg-gray-950 text-white p-4">
       <button onClick={() => router.back()} className="mb-4 text-gray-400">← Retour</button>
-
-      {/* Debug panel (à supprimer en prod) */}
-      <div className="bg-gray-900 p-3 rounded mb-4 text-xs text-gray-500">
-        Debug: {debug} • Pointages: {pointages.length}
-      </div>
-
+      
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-2xl font-bold">📊 Rapports</h1>
-        {/* ✅ Bouton TOUJOURS visible pour le test */}
-        <button 
-          onClick={exportPDF} 
-          className="bg-purple-600 hover:bg-purple-700 px-4 py-2 rounded disabled:opacity-50"
-        >
+        <button onClick={exportPDF} disabled={pointages.length === 0} className="bg-purple-600 px-4 py-2 rounded disabled:opacity-50 hover:bg-purple-700 transition">
           📄 Export PDF
         </button>
       </div>
 
-      {/* Tableau */}
       <div className="overflow-x-auto bg-gray-900 rounded border border-gray-800">
         {pointages.length === 0 ? (
-          <div className="p-6 text-center">
-            <p className="text-gray-500 mb-2">📭 Aucun pointage trouvé</p>
-            <p className="text-xs text-gray-600">
-              Astuce: Va sur /pointage et crée un pointage test pour voir des données ici.
-            </p>
-          </div>
+          <p className="p-6 text-center text-gray-500">📭 Aucun pointage enregistré</p>
         ) : (
           <table className="w-full text-sm text-left">
             <thead className="bg-gray-800 text-gray-300">
@@ -163,7 +99,7 @@ export default function RapportPage() {
               </tr>
             </thead>
             <tbody>
-              {pointages.map((p: any, i: number) => (
+              {pointages.map((p, i) => (
                 <tr key={i} className="border-t border-gray-800">
                   <td className="p-3">{new Date(p.timestamp).toLocaleString("fr-FR")}</td>
                   <td className="p-3 text-gray-300">{p.email?.split("@")[0]}</td>
