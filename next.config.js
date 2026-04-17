@@ -1,9 +1,12 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   output: 'export',
-  images: { unoptimized: true },
+  basePath: '/secu-app',
+  assetPrefix: '/secu-app/',
+  images: {
+    unoptimized: true,
+  },
   trailingSlash: true,
-  eslint: { ignoreDuringBuilds: true },
-  typescript: { ignoreBuildErrors: true },
-}
-module.exports = nextConfig
+};
+
+module.exports = nextConfig;
